@@ -5,9 +5,11 @@ import sys
 class CPU:
     """Main CPU class."""
 
-    def __init__(self):
+    def __init__(self, register_count = 8, calloc_size = 10000):
         """Construct a new CPU."""
-        pass
+        self.reg = [0b00000000] * register_count
+        self.ram = [0b00000000] * calloc_size
+        self.instruction = 0
 
     def load(self):
         """Load a program into memory."""
@@ -30,6 +32,15 @@ class CPU:
             self.ram[address] = instruction
             address += 1
 
+    def ram_read(self, position):
+        return self.ram[position]
+        
+    def ram_write(self, position, binary_value):
+        if position < 0 or position >= len(self.ram):
+            print("SEG FAULT NO POS")
+            sys.exit(1)
+
+        self.ram[position] = binary_value
 
     def alu(self, op, reg_a, reg_b):
         """ALU operations."""
@@ -60,6 +71,34 @@ class CPU:
 
         print()
 
-    def run(self):
+    def run(self, instruction_start = 0):
         """Run the CPU."""
-        pass
+        self.instruction = instruction_start
+        active = True
+
+        while active:
+            instruc_val = self.ram[self.instruction]
+
+            if instruc_val == 0b00000001: # HLT: HALT
+                # self.trace()
+                active = False
+            elif instruc_val == 0b01000111: # PRN (R#): Print register value
+                register = self.ram[self.instruction + 1]
+
+                print(self.reg[register])
+
+                self.instruction += 2
+            elif instruc_val == 0b10000010: # LDI (R#, VAL): Load immediate register with value
+                register = self.ram[self.instruction + 1]
+                value = self.ram[self.instruction + 2]
+
+                if register < 0 or register >= len(self.reg):
+                    # self.trace()
+                    print("SEG FAULT NO REG")
+                    sys.exit(1)
+
+                self.reg[register] = value
+
+                self.instruction += 3
+
+        print("HLT")
