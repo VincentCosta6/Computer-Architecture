@@ -21,8 +21,13 @@ class CPU:
             0b01010000: self.CALL,
             0b00010001: self.RET,
 
-            0b10100000: self.ADD,
-            0b10100010: self.MUL,
+            0b10100000: self.ALU_OP,
+            0b10100010: self.ALU_OP,
+        }
+
+        self.ALU_OPS = {
+            0b10100000: "ADD",
+            0b10100010: "MUL"
         }
 
         self.ram_top = calloc_size - 1
@@ -65,6 +70,10 @@ class CPU:
         self.program_end = address
 
     def ram_read(self, position):
+        if position < 0 or position >= len(self.ram):
+            print("SEG FAULT NO POS")
+            sys.exit(1)
+
         return self.ram[position]
 
     def ram_write(self, position, binary_value):
@@ -87,6 +96,33 @@ class CPU:
             self.reg[reg_a] /= self.reg[reg_b]
         else:
             raise Exception("Unsupported ALU operation")
+
+    def push_stack(self, value):
+        if self.ram_top - self.stack_last <= self.program_end + 1:
+            raise Exception("Stack overflow")
+
+        self.ram[self.ram_top - self.stack_last] = value
+        self.stack_last += 1
+
+        if self.DEBUG is True:
+            print(f"PUSH: VAL: {value}")
+
+            for i in range(self.stack_last):
+                print(f"  {self.ram_top - i}: {self.ram[self.ram_top - i]}")
+
+    def pop_stack(self, register = False):
+        if self.stack_last == 0:
+            raise Exception("Stack underflow")
+
+        self.stack_last -= 1
+        
+        if self.DEBUG:
+            print(f"POP: REG: {register}, ADDR: {self.ram_top - self.stack_last}, VAL: {self.ram[self.ram_top - self.stack_last]}")
+
+        return_val = self.ram[self.ram_top - self.stack_last]
+        self.ram[self.ram_top - self.stack_last] = 0b00000000
+
+        return return_val
 
     def HLT(self):
         self.active = False
@@ -116,34 +152,15 @@ class CPU:
 
     def PUSH(self):
         register = self.ram[self.instruction + 1]
-        
-        if self.ram_top - self.stack_last <= self.program_end + 1:
-            raise Exception("Stack overflow")
 
-        self.ram[self.ram_top - self.stack_last] = self.reg[register]
+        self.push_stack(self.reg[register])
 
-        if self.DEBUG is True:
-            print(f"PUSH: reg: {register}, val: {self.reg[register]}")
-
-            for i in range(self.stack_last + 1):
-                print(f"  {self.ram_top - i}: {self.ram[self.ram_top - i]}")
-
-        self.stack_last += 1
         self.instruction += 2
 
     def POP(self):
         register = self.ram[self.instruction + 1]
 
-        if self.stack_last == 0:
-            raise Exception("Stack underflow")
-
-        self.stack_last -= 1
-
-        if self.DEBUG:
-            print(f"POP: REG: {register}, ADDR: {self.ram_top - self.stack_last}, VAL: {self.ram[self.ram_top - self.stack_last]}")
-
-        self.reg[register] = self.ram[self.ram_top - self.stack_last]
-        self.ram[self.ram_top - self.stack_last] = 0b00000000
+        self.reg[register] = self.pop_stack()
 
         self.instruction += 2
 
@@ -154,15 +171,7 @@ class CPU:
         if self.DEBUG:
             print("PUSH BY CALL")
 
-        self.ram[self.ram_top - self.stack_last] = self.instruction
-
-        if self.DEBUG is True:
-            print(f"PUSH: VAL: {self.instruction}")
-
-            for i in range(self.stack_last + 1):
-                print(f"  {self.ram_top - i}: {self.ram[self.ram_top - i]}")
-
-        self.stack_last += 1
+        self.push_stack(self.instruction)
 
         if self.DEBUG:
             print(f"CALL: REG: {register}, VAL: {register_value}")
@@ -170,32 +179,22 @@ class CPU:
         self.instruction = register_value
 
     def RET(self):
-        self.stack_last -= 1
-
-        return_address = self.ram[self.ram_top - self.stack_last]
+        return_address = self.pop_stack()
 
         if self.DEBUG:
             print(f"RET: ADDR: {return_address}")
 
-        self.ram[self.ram_top - self.stack_last] = 0b00000000
         self.instruction = return_address + 2
 
-    def ADD(self):
+    def ALU_OP(self):
+        op = self.ALU_OPS[self.ram[self.instruction]]
         register_a = self.ram[self.instruction + 1]
         register_b = self.ram[self.instruction + 2]
+
+        self.alu(op, register_a, register_b)
 
         if self.DEBUG:
-            print(f"ADD: LINE: {self.instruction}, REG_A: {register_a}, REG_B: {register_b}, RES: {self.reg[register_a] + self.reg[register_b]}")
-
-        self.alu("ADD", register_a, register_b)
-
-        self.instruction += 3
-
-    def MUL(self):
-        register_a = self.ram[self.instruction + 1]
-        register_b = self.ram[self.instruction + 2]
-
-        self.alu("MUL", register_a, register_b)
+            print(f"{op.upper()}: LINE: {self.instruction}, REG_A: {register_a}, REG_B: {register_b}")
 
         self.instruction += 3
 
